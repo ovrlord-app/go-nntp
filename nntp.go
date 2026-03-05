@@ -114,7 +114,7 @@ func (r *bodyReader) Read(p []byte) (n int, err error) {
 }
 
 func (r *bodyReader) discard() error {
-	_, err := io.ReadAll(r)
+	_, err := io.Copy(io.Discard, r)
 	return err
 }
 
@@ -311,8 +311,14 @@ func (c *Conn) cmd(expectCode uint, format string, args ...interface{}) (code ui
 		}
 		c.br = nil
 	}
-	if _, err := fmt.Fprintf(c.conn, format+"\r\n", args...); err != nil {
-		return 0, "", err
+	if len(args) == 0 {
+		if _, err := io.WriteString(c.conn, format+"\r\n"); err != nil {
+			return 0, "", err
+		}
+	} else {
+		if _, err := fmt.Fprintf(c.conn, format+"\r\n", args...); err != nil {
+			return 0, "", err
+		}
 	}
 	line, err = c.r.ReadString('\n')
 	if err != nil {
@@ -754,6 +760,8 @@ var colon = []byte{':'}
 // and the Value can continue on multiple lines if each continuation line
 // starts with a space/tab.
 func readKeyValue(b *bufio.Reader) (key, value string, err error) {
+	var valueBuilder strings.Builder
+
 	line, e := readLineBytes(b)
 	if e == io.ErrUnexpectedEOF {
 		return "", "", nil
@@ -782,7 +790,8 @@ func readKeyValue(b *bufio.Reader) (key, value string, err error) {
 			break
 		}
 	}
-	value = string(line[i:])
+	valueBuilder.Grow(len(line) - i)
+	valueBuilder.Write(line[i:])
 
 	// Look for extension lines, which must begin with space.
 	for {
@@ -815,8 +824,10 @@ func readKeyValue(b *bufio.Reader) (key, value string, err error) {
 		if line, e = readLineBytes(b); e != nil {
 			return "", "", e
 		}
-		value += " " + string(line)
+		valueBuilder.WriteByte(' ')
+		valueBuilder.Write(line)
 	}
+	value = valueBuilder.String()
 	return key, value, nil
 
 Malformed:
