@@ -788,8 +788,12 @@ func readKeyValue(b *bufio.Reader) (key, value string, err error) {
 	for {
 		c, e := b.ReadByte()
 		if c != ' ' && c != '\t' {
-			if e != io.EOF {
-				b.UnreadByte()
+			if e == nil {
+				if err := b.UnreadByte(); err != nil {
+					return "", "", err
+				}
+			} else if e != io.EOF {
+				return "", "", e
 			}
 			break
 		}
@@ -803,7 +807,9 @@ func readKeyValue(b *bufio.Reader) (key, value string, err error) {
 				return "", "", e
 			}
 		}
-		b.UnreadByte()
+		if err := b.UnreadByte(); err != nil {
+			return "", "", err
+		}
 
 		// Read the rest of the line and add to value.
 		if line, e = readLineBytes(b); e != nil {
